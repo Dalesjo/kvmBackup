@@ -1,0 +1,127 @@
+ #!/bin/bash
+
+ while getopts 'd:k:l:p:' flag; do
+  case "${flag}" in
+    d) directory="${OPTARG}" ;;
+    k) kvm="${OPTARG}" ;;
+    l) lvm="${OPTARG}" ;;
+    p) encryptionkey="${OPTARG}" ;;
+  esac
+done
+
+
+if [ -z $kvm ] || [ -z $lvm ]; then
+	echo "kvmBackup [OPTIONS...]"
+	echo "";
+    echo "Backup a kvm machine and its lvm partition"
+	echo "";
+	echo "Flags:";
+    echo "  -d    Directory you want your backup to be saved in, note temporary folder will be created in this directory"
+    echo "  -k    Name off virtual machine, run virsh --list to find name."
+    echo "  -l    Full path off lvm partition that will be backed up."
+    echo "  -p    Password to encrypt lvm partition with."
+	exit 1;
+fi
+
+if ! hash openssl 2>/dev/null; then
+  echo "openssl is required, please install, for centos 7 run 'yum install openssl -y'"
+  exit 2;
+fi
+
+if ! hash tar 2>/dev/null; then
+  echo "tar is required, please install, for centos 7 run 'yum install tar -y'"
+  exit 3;
+fi
+
+if ! hash gzip 2>/dev/null; then
+  echo "gzip is required, please install, for centos 7 run 'yum install gzip -y'"
+  exit 4;
+fi
+
+if [ ! -d "$directory" ] && [ ! -w "$directory" ] ; then
+  echo "$directory does not exist or is not writable by this user $USER" ;
+  exit 5;
+fi
+
+echo "Starting backupscript at `date +%Y-%m-%dT%H:%M:%S%:z`" | tee -a "$kvm/log"
+cd $directory;
+mkdir $kvm
+
+# snapshot name
+snapshot=$lvm-snapshot;
+
+echo "Dumping kvm confgurination in config"
+virsh dumpxml $kvm | gzip -c | openssl enc -e -aes256 -pass pass:$encryptionkey -out $kvm/config.xml.gz.enc 
+
+on=0
+while [ $on -lt 1 ]; do
+### virsh shutdown $kvm 2> /dev/null
+    sleep 3;
+    vm=$(virsh list | grep running | awk '{ print $2 }' | grep -Fx "$kvm")
+    on=$?
+    echo "Waiting for $kvm to shutdown" | tee -a "$kvm/log"
+done
+echo "$kvm has shutdown at `date +%Y-%m-%dT%H:%M:%S%:z`" | tee -a "$kvm/log"
+
+ snapshotpath=$(lvdisplay $snapshot)
+ if [ $snapshotpath -lt 0 ]; then
+    echo "Snapshot $snapshotpath exists, Deleting" | tee -a "$kvm/log"
+###     lvremove -f $snapshotpath
+ fi
+
+echo "storing LVM configuration in lvm.config" | tee -a "$kvm/log"
+lvdisplay $lvm > $kvm/lvm.config
+
+echo "Creating snapshot" | tee -a "$kvm/log"
+### lvcreate -L10G -s -n $snapshot $lvm
+
+### virsh start $kvm
+echo "$kvm was started at `date +%Y-%m-%dT%H:%M:%S%:z`" | tee -a "$kvm/log"
+
+echo "Exporting snapshot" | tee -a "$kvm/log"
+### dd bs=64k if=$snapshotpath | gzip | openssl enc -e -aes256 -pass pass:$encryptionkey -out $kvm/disk.gz.enc 
+echo "Exporting done at `date +%Y-%m-%dT%H:%M:%S%:z`" | tee -a "$kvm/log"
+
+# Documentation
+
+lvmsize=$(lvdisplay /dev/virtualData/wiki |grep "LV Size" | awk '{ print $3$4 }')
+lvname=$(lvdisplay /dev/virtualData/wiki |grep "LV Name" | awk '{ print $3 }')
+vgname=$(lvdisplay /dev/virtualData/wiki |grep "VG Name" | awk '{ print $3 }')
+
+# Documentation
+cat <<EOF > $kvm/README
+Restore
+-------
+Example code to restore backup, change parths as necessary.
+
+1. CREATE LVM PARTITION
+lvcreate --name $vgname --size $lvmsize $lvname
+
+2. IMPORT PARTITION
+openssl enc -d -aes-256-cbc -pass pass:test -in config.xml.gz.enc | gzip -c -d | bs=64k of=$lvm
+
+1. CREATE YOUR KVM CONFIGURATION
+Edit your config.xml as needed, rename lvm partition?
+
+openssl enc -d -aes-256-cbc -pass pass:test -in config.xml.gz.enc | gzip -c -d > config.xml
+virsh create config.xml
+
+files 
+------
+config.xml.gz.enc   This is an dumpxml from virsh command.
+disk.gz.enc         This is the lvm partition its compressed and encrypted. Do not loose your key.
+lvm.config          An lvdisplay of the lvm partition we have in backup.
+log                 Logdate from the backupscript
+README              This file
+EOF;
+
+# Clean up
+echo "Removing Snapshot $snapshotpath" | tee -a "$kvm/log"
+### lvremove -f $snapshotpath
+
+echo "Taring backup"
+### backup=$kvm-`date +%Y%m%d-%H%M%S`;
+### tar -cvf $backup $kvm
+### rm -r $kvm
+
+
