@@ -96,7 +96,7 @@ lvname=$(lvdisplay $lvm |grep "LV Name" | awk '{ print $3 }')
 vgname=$(lvdisplay $lvm |grep "VG Name" | awk '{ print $3 }')
 
 # Documentation
-cat <<EOF > $kvm/README
+cat > $kvm/README <<EOF
 Restore
 -------
 Example code to restore backup, change paths as necessary.
@@ -120,14 +120,14 @@ disk.gz.enc         This is the lvm partition its compressed and encrypted. Do n
 lvm.config          An lvdisplay of the lvm partition we have in backup.
 log                 Logdate from the backupscript
 README              This file
-EOF;
+EOF
 
 # Clean up
 echo "Removing Snapshot $snapshotpath" | tee -a "$kvm/log"
 lvremove -f $snapshotpath
 
-echo "Taring backup"
-backup=$kvm-`date +%Y%m%d-%H%M%S`;
+backup=$kvm-`date +%Y%m%d-%H%M%S`.tar;
+echo "Taring backup to $backup | tee -a "$kvm/log""
 tar -cvf $backup $kvm
 
 echo "Cleaning up temporary directory $kvm"
