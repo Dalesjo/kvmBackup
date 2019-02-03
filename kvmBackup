@@ -79,7 +79,7 @@ echo "$kvm has shutdown at `date +%Y-%m-%dT%H:%M:%S%:z`" | tee -a "$kvm/log"
 echo "Creating snapshot $snapshot" | tee -a "$kvm/log"
 lvcreate -L10G -s -n $snapshot $lvm
 
-echo "storing LVM configuration in lvm.config" | tee -a "$kvm/log"
+echo "Storing LVM configuration in lvm.config" | tee -a "$kvm/log"
 lvdisplay $lvm > $kvm/lvm.config
 
 virsh start $kvm
@@ -123,8 +123,8 @@ README              This file
 EOF
 
 # Clean up
-echo "Removing Snapshot $snapshotpath" | tee -a "$kvm/log"
-lvremove -f $snapshotpath
+echo "Removing Snapshot $snapshot" | tee -a "$kvm/log"
+lvremove -f $snapshot
 
 backup=$kvm-`date +%Y%m%d-%H%M%S`.tar;
 echo "Taring backup to $backup | tee -a "$kvm/log""
