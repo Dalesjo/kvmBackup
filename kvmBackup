@@ -10,7 +10,7 @@
 done
 
 
-if [ -z $kvm ] || [ -z $lvm ]; then
+if [ -z $directory ] || [ -z $kvm ] || [ -z $lvm ] || [ -z $encryptionkey ]; then
 	echo "kvmBackup [OPTIONS...]"
 	echo "";
     echo "Backup a kvm machine and its lvm partition"
@@ -57,7 +57,7 @@ echo "Starting backupscript at `date +%Y-%m-%dT%H:%M:%S%:z`" | tee -a "$kvm/log"
 # snapshot name
 snapshot=$lvm-snapshot;
 
-echo "Dumping kvm confgurination in config"
+echo "Dumping kvm confgurination in config.xml"
 virsh dumpxml $kvm | gzip -c | openssl enc -e -aes256 -pass pass:$encryptionkey -out $kvm/config.xml.gz.enc 
 
 on=0
@@ -70,17 +70,17 @@ while [ $on -lt 1 ]; do
 done
 echo "$kvm has shutdown at `date +%Y-%m-%dT%H:%M:%S%:z`" | tee -a "$kvm/log"
 
- snapshotpath=$(lvdisplay $snapshot)
- if [ $snapshotpath -lt 0 ]; then
+ snapshotpath=$(lvdisplay | grep "LV Path" | awk '{ print $3 }' | grep -Fx $snapshot)
+ if [ ! -z $snapshotpath ]; then
     echo "Snapshot $snapshotpath exists, Deleting" | tee -a "$kvm/log"
     lvremove -f $snapshotpath
  fi
 
-echo "storing LVM configuration in lvm.config" | tee -a "$kvm/log"
-lvdisplay $lvm > $kvm/lvm.config
-
 echo "Creating snapshot" | tee -a "$kvm/log"
 lvcreate -L10G -s -n $snapshot $lvm
+
+echo "storing LVM configuration in lvm.config" | tee -a "$kvm/log"
+lvdisplay $lvm > $kvm/lvm.config
 
 virsh start $kvm
 echo "$kvm was started at `date +%Y-%m-%dT%H:%M:%S%:z`" | tee -a "$kvm/log"
@@ -91,15 +91,15 @@ echo "Exporting done at `date +%Y-%m-%dT%H:%M:%S%:z`" | tee -a "$kvm/log"
 
 # Documentation
 
-lvmsize=$(lvdisplay /dev/virtualData/wiki |grep "LV Size" | awk '{ print $3$4 }')
-lvname=$(lvdisplay /dev/virtualData/wiki |grep "LV Name" | awk '{ print $3 }')
-vgname=$(lvdisplay /dev/virtualData/wiki |grep "VG Name" | awk '{ print $3 }')
+lvmsize=$(lvdisplay $lvm |grep "LV Size" | awk '{ print $3$4 }')
+lvname=$(lvdisplay $lvm |grep "LV Name" | awk '{ print $3 }')
+vgname=$(lvdisplay $lvm |grep "VG Name" | awk '{ print $3 }')
 
 # Documentation
 cat <<EOF > $kvm/README
 Restore
 -------
-Example code to restore backup, change parths as necessary.
+Example code to restore backup, change paths as necessary.
 
 1. CREATE LVM PARTITION
 lvcreate --name $vgname --size $lvmsize $lvname
