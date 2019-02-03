@@ -76,7 +76,7 @@ echo "$kvm has shutdown at `date +%Y-%m-%dT%H:%M:%S%:z`" | tee -a "$kvm/log"
     lvremove -f $snapshotpath
  fi
 
-echo "Creating snapshot" | tee -a "$kvm/log"
+echo "Creating snapshot $snapshot" | tee -a "$kvm/log"
 lvcreate -L10G -s -n $snapshot $lvm
 
 echo "storing LVM configuration in lvm.config" | tee -a "$kvm/log"
@@ -85,8 +85,8 @@ lvdisplay $lvm > $kvm/lvm.config
 virsh start $kvm
 echo "$kvm was started at `date +%Y-%m-%dT%H:%M:%S%:z`" | tee -a "$kvm/log"
 
-echo "Exporting snapshot" | tee -a "$kvm/log"
-dd bs=64k if=$snapshotpath | gzip | openssl enc -e -aes256 -pass pass:$encryptionkey -out $kvm/disk.gz.enc 
+echo "Exporting snapshot $snapshot" | tee -a "$kvm/log"
+dd bs=64k if=$snapshot | gzip | openssl enc -e -aes256 -pass pass:$encryptionkey -out $kvm/disk.gz.enc 
 echo "Exporting done at `date +%Y-%m-%dT%H:%M:%S%:z`" | tee -a "$kvm/log"
 
 # Documentation
@@ -102,15 +102,15 @@ Restore
 Example code to restore backup, change paths as necessary.
 
 1. CREATE LVM PARTITION
-lvcreate --name $vgname --size $lvmsize $lvname
+lvcreate --name $lvname --size $lvmsize $vgname
 
 2. IMPORT PARTITION
-openssl enc -d -aes-256-cbc -pass pass:test -in config.xml.gz.enc | gzip -c -d | bs=64k of=$lvm
+openssl enc -d -aes-256-cbc -in disk.gz.enc | gzip -c -d | dd bs=64k of=$lvm
 
 1. CREATE YOUR KVM CONFIGURATION
-Edit your config.xml as needed, rename lvm partition?
+Edit your config.xml as needed, rename lvm partition?, change name and uuid if you are duplicating a server.
 
-openssl enc -d -aes-256-cbc -pass pass:test -in config.xml.gz.enc | gzip -c -d > config.xml
+openssl enc -d -aes-256-cbc -in config.xml.gz.enc | gzip -c -d > config.xml
 virsh create config.xml
 
 files 
@@ -132,5 +132,4 @@ tar -cvf $backup $kvm
 
 echo "Cleaning up temporary directory $kvm"
 rm -r $kvm
-
-
+exit 0;
