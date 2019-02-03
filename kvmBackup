@@ -43,9 +43,16 @@ if [ ! -d "$directory" ] && [ ! -w "$directory" ] ; then
   exit 5;
 fi
 
-echo "Starting backupscript at `date +%Y-%m-%dT%H:%M:%S%:z`" | tee -a "$kvm/log"
+echo "Goto working directory $directory"
 cd $directory;
+
+if [ -d "$kvm" ]; then 
+    rm -Rf $kvm; 
+    echo "$kvm does already exists. cleaning up mess."
+fi
+
 mkdir $kvm
+echo "Starting backupscript at `date +%Y-%m-%dT%H:%M:%S%:z`" | tee -a "$kvm/log"
 
 # snapshot name
 snapshot=$lvm-snapshot;
@@ -55,8 +62,8 @@ virsh dumpxml $kvm | gzip -c | openssl enc -e -aes256 -pass pass:$encryptionkey 
 
 on=0
 while [ $on -lt 1 ]; do
-### virsh shutdown $kvm 2> /dev/null
-    sleep 3;
+    virsh shutdown $kvm 2> /dev/null
+    sleep 10;
     vm=$(virsh list | grep running | awk '{ print $2 }' | grep -Fx "$kvm")
     on=$?
     echo "Waiting for $kvm to shutdown" | tee -a "$kvm/log"
@@ -66,20 +73,20 @@ echo "$kvm has shutdown at `date +%Y-%m-%dT%H:%M:%S%:z`" | tee -a "$kvm/log"
  snapshotpath=$(lvdisplay $snapshot)
  if [ $snapshotpath -lt 0 ]; then
     echo "Snapshot $snapshotpath exists, Deleting" | tee -a "$kvm/log"
-###     lvremove -f $snapshotpath
+    lvremove -f $snapshotpath
  fi
 
 echo "storing LVM configuration in lvm.config" | tee -a "$kvm/log"
 lvdisplay $lvm > $kvm/lvm.config
 
 echo "Creating snapshot" | tee -a "$kvm/log"
-### lvcreate -L10G -s -n $snapshot $lvm
+lvcreate -L10G -s -n $snapshot $lvm
 
-### virsh start $kvm
+virsh start $kvm
 echo "$kvm was started at `date +%Y-%m-%dT%H:%M:%S%:z`" | tee -a "$kvm/log"
 
 echo "Exporting snapshot" | tee -a "$kvm/log"
-### dd bs=64k if=$snapshotpath | gzip | openssl enc -e -aes256 -pass pass:$encryptionkey -out $kvm/disk.gz.enc 
+dd bs=64k if=$snapshotpath | gzip | openssl enc -e -aes256 -pass pass:$encryptionkey -out $kvm/disk.gz.enc 
 echo "Exporting done at `date +%Y-%m-%dT%H:%M:%S%:z`" | tee -a "$kvm/log"
 
 # Documentation
@@ -117,11 +124,13 @@ EOF;
 
 # Clean up
 echo "Removing Snapshot $snapshotpath" | tee -a "$kvm/log"
-### lvremove -f $snapshotpath
+lvremove -f $snapshotpath
 
 echo "Taring backup"
-### backup=$kvm-`date +%Y%m%d-%H%M%S`;
-### tar -cvf $backup $kvm
-### rm -r $kvm
+backup=$kvm-`date +%Y%m%d-%H%M%S`;
+tar -cvf $backup $kvm
+
+echo "Cleaning up temporary directory $kvm"
+rm -r $kvm
 
 
